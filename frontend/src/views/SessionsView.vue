@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { Card, List, Button, Empty, message, Tag } from 'ant-design-vue'
+import { Card, List, Button, Empty, message } from 'ant-design-vue'
 import { sessionApi, type Session } from '@/api/session'
 import { useRouter } from 'vue-router'
 import { PlusOutlined, DeleteOutlined, ClockCircleOutlined } from '@ant-design/icons-vue'
@@ -75,7 +75,6 @@ onMounted(() => {
               <List.Item.Meta>
                 <template #title>
                   <span class="session-title">{{ item.id }}</span>
-                  <Tag color="blue" style="margin-left: 8px">会话</Tag>
                 </template>
                 <template #description>
                   <span class="session-time">
@@ -84,19 +83,19 @@ onMounted(() => {
                 </template>
               </List.Item.Meta>
               <template #actions>
-                <Button
-                  type="link"
+                <button
+                  class="open-btn"
                   @click="router.push({ name: 'chat', query: { session: item.id } })"
                 >
                   打开
-                </Button>
-                <Button
-                  type="link"
-                  danger
+                </button>
+                <button
+                  class="delete-btn"
                   @click="deleteSession(item.id)"
+                  title="删除"
                 >
                   <DeleteOutlined />
-                </Button>
+                </button>
               </template>
             </List.Item>
           </template>
@@ -163,6 +162,37 @@ onMounted(() => {
 .session-time {
   color: #999;
   font-size: 13px;
+}
+
+/* 打开按钮 - 黑色字体，hover 红色 */
+.open-btn {
+  padding: 0 8px;
+  height: 22px;
+  font-size: 12px;
+  line-height: 20px;
+  border: none;
+  background: transparent;
+  color: #333;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.open-btn:hover {
+  color: #ff4d4f;
+}
+
+/* 删除按钮 - 黑色图标 */
+.delete-btn {
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  color: #333;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.delete-btn:hover {
+  color: #ff4d4f;
 }
 
 .empty-card {

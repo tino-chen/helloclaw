@@ -6,9 +6,23 @@ export interface Session {
   updated_at: number
 }
 
+// OpenAI 标准消息格式
+export interface ToolCallFunction {
+  name: string
+  arguments: string  // JSON 字符串
+}
+
+export interface ToolCall {
+  id: string
+  type: 'function'
+  function: ToolCallFunction
+}
+
 export interface ChatMessage {
-  role: 'user' | 'assistant'
-  content: string
+  role: 'user' | 'assistant' | 'tool'
+  content?: string
+  tool_calls?: ToolCall[]
+  tool_call_id?: string
 }
 
 export interface SessionHistory {

@@ -1,7 +1,8 @@
 """会话 API 路由"""
+import json
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict, Any, Union, Literal
 
 router = APIRouter(prefix="/session", tags=["session"])
 
@@ -24,10 +25,27 @@ class SessionCreateResponse(BaseModel):
     message: str = "Session created successfully"
 
 
+# ==================== OpenAI 标准消息格式 ====================
+
+class ToolCallFunction(BaseModel):
+    """工具调用函数"""
+    name: str
+    arguments: str  # JSON 字符串
+
+
+class ToolCall(BaseModel):
+    """工具调用"""
+    id: str
+    type: Literal["function"] = "function"
+    function: ToolCallFunction
+
+
 class ChatMessage(BaseModel):
-    """聊天消息"""
-    role: str
-    content: str
+    """聊天消息（OpenAI 标准格式）"""
+    role: Literal["user", "assistant", "tool"]
+    content: Optional[str] = None
+    tool_calls: Optional[List[ToolCall]] = None  # assistant 消息中的工具调用
+    tool_call_id: Optional[str] = None  # tool 消息中的调用 ID
 
 
 class SessionHistoryResponse(BaseModel):
@@ -103,20 +121,63 @@ async def get_session(session_id: str):
 async def get_session_history(session_id: str):
     """获取会话历史消息
 
-    返回会话的所有聊天记录，新会话返回空列表
+    返回会话的所有聊天记录，按照 OpenAI 标准格式
     """
     agent = get_agent()
     if not agent:
         raise HTTPException(status_code=500, detail="Agent not initialized")
 
-    messages = agent.get_session_history(session_id)
-    # 如果会话不存在，返回空消息列表（新会话）
-    if messages is None:
-        messages = []
+    raw_messages = agent.get_session_history(session_id)
+    if raw_messages is None:
+        raw_messages = []
+
+    # 转换为 OpenAI 标准格式
+    chat_messages: List[ChatMessage] = []
+
+    for m in raw_messages:
+        role = m.get("role", "")
+        content = m.get("content", "")
+        metadata = m.get("metadata", {})
+
+        if role == "user":
+            chat_messages.append(ChatMessage(role="user", content=content))
+
+        elif role == "assistant":
+            tool_calls_data = metadata.get("tool_calls")
+            if tool_calls_data:
+                # 包含工具调用的 assistant 消息
+                tool_calls = [
+                    ToolCall(
+                        id=tc.get("id", ""),
+                        type="function",
+                        function=ToolCallFunction(
+                            name=tc.get("function", {}).get("name", ""),
+                            arguments=tc.get("function", {}).get("arguments", "{}")
+                        )
+                    )
+                    for tc in tool_calls_data
+                ]
+                chat_messages.append(ChatMessage(
+                    role="assistant",
+                    content=content if content else None,
+                    tool_calls=tool_calls
+                ))
+            elif content:
+                # 普通的 assistant 文本消息
+                chat_messages.append(ChatMessage(role="assistant", content=content))
+
+        elif role == "tool":
+            # tool 消息
+            tool_call_id = metadata.get("tool_call_id")
+            chat_messages.append(ChatMessage(
+                role="tool",
+                content=content,
+                tool_call_id=tool_call_id
+            ))
 
     return SessionHistoryResponse(
         session_id=session_id,
-        messages=[ChatMessage(role=m["role"], content=m["content"]) for m in messages]
+        messages=chat_messages
     )
 
 

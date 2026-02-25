@@ -15,6 +15,11 @@ class ConfigUpdateRequest(BaseModel):
     content: str
 
 
+class AgentInfo(BaseModel):
+    """助手信息"""
+    name: str
+
+
 # 全局 workspace 实例（由 main.py 在启动时设置）
 _workspace: Optional[WorkspaceManager] = None
 
@@ -68,7 +73,8 @@ def ensure_config_json_exists():
 async def list_configs(ws: WorkspaceManager = Depends(get_workspace)):
     """获取配置文件列表"""
     configs = ws.list_configs()
-    # 添加 config.json
+
+    # 添加 config.json 到列表开头
     configs.insert(0, "CONFIG")
     return {"configs": configs}
 
@@ -114,3 +120,61 @@ async def update_config(name: str, request: ConfigUpdateRequest, ws: WorkspaceMa
 
     ws.save_config(name, request.content)
     return {"name": name, "status": "updated"}
+
+
+def get_agent():
+    """获取全局 Agent 实例"""
+    from ..main import get_agent as _get_agent
+    return _get_agent()
+
+
+@router.post("/reset")
+async def reset_workspace(
+    reset_sessions: bool = False,
+    reset_memory: bool = False,
+    reset_global_config: bool = False,
+    ws: WorkspaceManager = Depends(get_workspace)
+):
+    """重置工作空间到初始模板
+
+    Args:
+        reset_sessions: 是否清除会话
+        reset_memory: 是否清除每日记忆
+        reset_global_config: 是否重置全局配置
+
+    警告：这将覆盖所有配置文件！
+    """
+    try:
+        ws.reset_to_templates(
+            reset_sessions=reset_sessions,
+            reset_memory=reset_memory,
+            reset_global_config=reset_global_config
+        )
+
+        # 如果清除了会话，也要清除 Agent 内存中的历史记录
+        if reset_sessions:
+            agent = get_agent()
+            if agent:
+                agent.clear_all_history()
+
+        messages = ["配置文件已重置"]
+        if reset_sessions:
+            messages.append("会话已清除")
+        if reset_memory:
+            messages.append("每日记忆已清除")
+        if reset_global_config:
+            messages.append("全局配置已重置")
+
+        return {"status": "success", "message": "，".join(messages)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"重置失败: {str(e)}")
+
+
+@router.get("/agent/info", response_model=AgentInfo)
+async def get_agent_info():
+    """获取助手信息（包括名字）"""
+    agent = get_agent()
+    if not agent:
+        raise HTTPException(status_code=500, detail="Agent not initialized")
+
+    return AgentInfo(name=agent.name)
