@@ -13,19 +13,36 @@ class SessionInfo(BaseModel):
     updated_at: float
 
 
+class SessionListResponse(BaseModel):
+    """会话列表响应"""
+    sessions: List[SessionInfo]
+
+
 class SessionCreateResponse(BaseModel):
     """创建会话响应"""
     session_id: str
     message: str = "Session created successfully"
 
 
+class ChatMessage(BaseModel):
+    """聊天消息"""
+    role: str
+    content: str
+
+
+class SessionHistoryResponse(BaseModel):
+    """会话历史响应"""
+    session_id: str
+    messages: List[ChatMessage]
+
+
 def get_agent():
     """获取全局 Agent 实例"""
-    from main import get_agent as _get_agent
+    from ..main import get_agent as _get_agent
     return _get_agent()
 
 
-@router.get("/list", response_model=List[SessionInfo])
+@router.get("/list", response_model=SessionListResponse)
 async def list_sessions():
     """获取会话列表
 
@@ -33,17 +50,17 @@ async def list_sessions():
     """
     agent = get_agent()
     if not agent:
-        return []
+        return SessionListResponse(sessions=[])
 
     sessions = agent.list_sessions()
-    return [
+    return SessionListResponse(sessions=[
         SessionInfo(
             id=s["id"],
             created_at=s["created_at"],
             updated_at=s["updated_at"]
         )
         for s in sessions
-    ]
+    ])
 
 
 @router.post("/create", response_model=SessionCreateResponse)
@@ -80,6 +97,27 @@ async def get_session(session_id: str):
             )
 
     raise HTTPException(status_code=404, detail="Session not found")
+
+
+@router.get("/{session_id}/history", response_model=SessionHistoryResponse)
+async def get_session_history(session_id: str):
+    """获取会话历史消息
+
+    返回会话的所有聊天记录，新会话返回空列表
+    """
+    agent = get_agent()
+    if not agent:
+        raise HTTPException(status_code=500, detail="Agent not initialized")
+
+    messages = agent.get_session_history(session_id)
+    # 如果会话不存在，返回空消息列表（新会话）
+    if messages is None:
+        messages = []
+
+    return SessionHistoryResponse(
+        session_id=session_id,
+        messages=[ChatMessage(role=m["role"], content=m["content"]) for m in messages]
+    )
 
 
 @router.delete("/{session_id}")

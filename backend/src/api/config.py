@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
 
-from workspace.manager import WorkspaceManager
+from ..workspace.manager import WorkspaceManager
 
 router = APIRouter(prefix="/config", tags=["config"])
 

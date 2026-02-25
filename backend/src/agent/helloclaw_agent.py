@@ -13,8 +13,8 @@ from hello_agents.tools import (
     CalculatorTool,
 )
 
-from workspace.manager import WorkspaceManager
-from tools import MemoryTool, IdentityTool
+from ..workspace.manager import WorkspaceManager
+from ..tools import MemoryTool, IdentityTool
 
 
 # HelloClaw 默认系统提示词
@@ -203,12 +203,28 @@ class HelloClawAgent:
         Returns:
             Agent 回复
         """
-        # 如果有 session_id，加载会话
+        # 如果有 session_id，检查是否需要加载或清除历史
         if session_id:
-            self._agent.load_session(session_id)
+            session_file = os.path.join(self.workspace_path, "sessions", f"{session_id}.json")
+            if os.path.exists(session_file):
+                # 已有会话，加载历史
+                self._agent.load_session(session_file)
+            else:
+                # 新会话，清除历史
+                self._agent.clear_history()
+        else:
+            # 没有 session_id，清除历史（新会话）
+            self._agent.clear_history()
 
         # 运行 Agent
         response = self._agent.run(message)
+
+        # 保存会话（使用传入的 session_id 或生成新的）
+        save_id = session_id or self.create_session()
+        try:
+            self._agent.save_session(save_id)
+        except Exception as e:
+            print(f"⚠️ 保存会话失败: {e}")
 
         return response
 
@@ -275,6 +291,50 @@ class HelloClawAgent:
             os.remove(filepath)
             return True
         return False
+
+    def get_session_history(self, session_id: str) -> List[dict]:
+        """获取会话历史消息
+
+        Args:
+            session_id: 会话 ID
+
+        Returns:
+            消息列表，每条消息包含 role 和 content
+            如果会话不存在，返回空列表
+        """
+        import json
+        filepath = os.path.join(self.workspace_path, "sessions", f"{session_id}.json")
+        if not os.path.exists(filepath):
+            # 新会话，返回空列表
+            return []
+
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            # HelloAgents session 格式：history 列表
+            messages = []
+            raw_history = data.get("history", [])
+            for msg in raw_history:
+                # 过滤出 user 和 assistant 消息
+                role = msg.get("role", "")
+                if role in ("user", "assistant"):
+                    content = msg.get("content", "")
+                    if isinstance(content, list):
+                        # 处理多模态消息，提取文本
+                        text_parts = []
+                        for part in content:
+                            if isinstance(part, dict) and part.get("type") == "text":
+                                text_parts.append(part.get("text", ""))
+                            elif isinstance(part, str):
+                                text_parts.append(part)
+                        content = "\n".join(text_parts)
+                    messages.append({"role": role, "content": content})
+
+            return messages
+        except Exception as e:
+            print(f"Error loading session history: {e}")
+            return []
 
     def reload_config(self):
         """重新加载配置
