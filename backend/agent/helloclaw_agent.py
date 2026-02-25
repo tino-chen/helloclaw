@@ -4,6 +4,7 @@ import os
 from typing import List
 
 from hello_agents import ReActAgent, Config
+from hello_agents.core.llm import HelloAgentsLLM
 from hello_agents.tools import (
     ToolRegistry,
     ReadTool,
@@ -80,7 +81,8 @@ class HelloClawAgent:
             max_steps: 最大执行步数
         """
         self.name = name
-        self.workspace_path = workspace_path or os.path.expanduser("~/.helloclaw/workspace")
+        # 确保 workspace_path 正确展开 ~/
+        self.workspace_path = os.path.expanduser(workspace_path or "~/.helloclaw/workspace")
 
         # 初始化工作空间管理器
         self.workspace = WorkspaceManager(self.workspace_path)
@@ -88,21 +90,37 @@ class HelloClawAgent:
         # 确保工作空间存在
         self.workspace.ensure_workspace_exists()
 
-        # 加载身份配置
-        identity = self.workspace.load_config("IDENTITY")
-        agent_name = identity.get("name", name) if identity else name
+        # 加载身份配置（IDENTITY.md 是 Markdown 文件，直接使用 agent name）
+        # 注意：如果需要从 IDENTITY.md 解析名称，可以在这里添加解析逻辑
+        agent_name = name
 
         # 构建系统提示词
         system_prompt = self._build_system_prompt(agent_name)
 
-        # 初始化配置
+        # 获取 LLM 配置
+        self._model_id = model_id or os.getenv("LLM_MODEL_ID", "glm-4")
+        self._api_key = api_key or os.getenv("LLM_API_KEY")
+        self._base_url = base_url or os.getenv("LLM_BASE_URL")
+
+        # 初始化配置（F2.4 上下文压缩）
         self.config = Config(
-            model_id=model_id or os.getenv("LLM_MODEL_ID", "glm-4"),
-            api_key=api_key or os.getenv("LLM_API_KEY"),
-            base_url=base_url or os.getenv("LLM_BASE_URL"),
-            max_steps=max_steps,
             session_enabled=True,
             session_dir=os.path.join(self.workspace_path, "sessions"),
+            compression_threshold=0.8,  # 80% 时触发压缩
+            min_retain_rounds=10,  # 保留最近 10 轮完整对话
+            enable_smart_compression=False,  # 暂不启用智能摘要
+            context_window=128000,  # 128k 上下文窗口
+            trace_enabled=False,
+            skills_enabled=False,
+            todowrite_enabled=False,
+            devlog_enabled=False,
+        )
+
+        # 初始化 LLM
+        self._llm = HelloAgentsLLM(
+            model=self._model_id,
+            api_key=self._api_key,
+            base_url=self._base_url,
         )
 
         # 初始化工具注册表
@@ -111,7 +129,7 @@ class HelloClawAgent:
         # 初始化底层 ReActAgent
         self._agent = ReActAgent(
             name=name,
-            llm=None,  # ReActAgent 会从 config 创建 LLM
+            llm=self._llm,
             tool_registry=self.tool_registry,
             system_prompt=system_prompt,
             config=self.config,
@@ -160,10 +178,10 @@ class HelloClawAgent:
         """
         registry = ToolRegistry()
 
-        # HelloAgents 内置工具
-        registry.register_tool(ReadTool())
-        registry.register_tool(WriteTool())
-        registry.register_tool(EditTool())
+        # HelloAgents 内置工具（设置工作空间为 project_root）
+        registry.register_tool(ReadTool(project_root=self.workspace_path))
+        registry.register_tool(WriteTool(project_root=self.workspace_path))
+        registry.register_tool(EditTool(project_root=self.workspace_path))
         registry.register_tool(CalculatorTool())
 
         # HelloClaw 自定义工具

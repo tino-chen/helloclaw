@@ -2,6 +2,10 @@
 HelloClaw Backend - FastAPI 入口
 """
 import os
+
+# 禁用 PYTHONSTARTUP 以避免 I/O 问题
+os.environ.pop("PYTHONSTARTUP", None)
+
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -9,14 +13,26 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api import chat, session, config, memory
 from workspace.manager import WorkspaceManager
+from agent.helloclaw_agent import HelloClawAgent
 
 # 加载环境变量
 load_dotenv()
+
+# 全局 Agent 实例
+_agent: HelloClawAgent = None
+
+
+def get_agent() -> HelloClawAgent:
+    """获取全局 Agent 实例"""
+    global _agent
+    return _agent
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
+    global _agent
+
     # 启动时初始化
     print("HelloClaw Backend starting...")
 
@@ -29,6 +45,10 @@ async def lifespan(app: FastAPI):
     # 设置全局 workspace 实例
     config.set_workspace(workspace)
     memory.set_workspace(workspace)
+
+    # 初始化全局 Agent 实例
+    _agent = HelloClawAgent(workspace_path=workspace_path)
+    print("HelloClawAgent initialized")
 
     yield
     # 关闭时清理
