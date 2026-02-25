@@ -1,4 +1,5 @@
 /* HelloClaw 全局样式 */
+@import './base.css';
 
 * {
   margin: 0;
