@@ -11,9 +11,9 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api import chat, session, config, memory
-from workspace.manager import WorkspaceManager
-from agent.helloclaw_agent import HelloClawAgent
+from .api import chat, session, config, memory
+from .workspace.manager import WorkspaceManager
+from .agent.helloclaw_agent import HelloClawAgent
 
 # 加载环境变量
 load_dotenv()
@@ -93,7 +93,7 @@ async def api_root():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
-        "main:app",
+        "src.main:app",
         host="0.0.0.0",
         port=int(os.getenv("PORT", 8000)),
         reload=True,

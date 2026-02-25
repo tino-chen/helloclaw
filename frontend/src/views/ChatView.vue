@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, computed, nextTick } from 'vue'
+import { ref, watch, computed, nextTick, onMounted } from 'vue'
 import { Input, Button, message } from 'ant-design-vue'
 import { SendOutlined, PlusOutlined, StopOutlined } from '@ant-design/icons-vue'
 import { useRouter, useRoute } from 'vue-router'
@@ -7,6 +7,9 @@ import { sessionApi } from '@/api/session'
 import { chatApi } from '@/api/chat'
 import { renderMarkdown, formatTime } from '@/utils/markdown'
 import LobsterIcon from '@/assets/lobster.svg'
+
+// localStorage key for saving current session
+const SESSION_STORAGE_KEY = 'helloclaw.lastSessionId'
 
 interface Message {
   id: number
@@ -28,6 +31,7 @@ const loading = ref(false)
 const currentSessionId = ref<string | null>(null)
 const messagesContainer = ref<HTMLElement | null>(null)
 const abortController = ref<AbortController | null>(null)
+const initializing = ref(true)
 
 // 消息分组（Slack 风格）
 const messageGroups = computed<MessageGroup[]>(() => {
@@ -49,16 +53,86 @@ const messageGroups = computed<MessageGroup[]>(() => {
   return groups
 })
 
+// 保存当前会话 ID 到 localStorage
+const saveCurrentSession = (sessionId: string) => {
+  localStorage.setItem(SESSION_STORAGE_KEY, sessionId)
+}
+
+// 从 localStorage 读取上次会话 ID
+const getLastSession = (): string | null => {
+  return localStorage.getItem(SESSION_STORAGE_KEY)
+}
+
+// 加载会话历史
+const loadSessionHistory = async (sessionId: string) => {
+  try {
+    const res = await sessionApi.getHistory(sessionId)
+    messages.value = res.messages.map((msg, index) => ({
+      id: Date.now() + index,
+      role: msg.role,
+      content: msg.content,
+      timestamp: new Date()
+    }))
+    await scrollToBottom()
+  } catch (error) {
+    // 会话不存在或加载失败，清空消息
+    messages.value = []
+  }
+}
+
+// 初始化会话
+const initSession = async () => {
+  const urlSession = route.query.session as string | undefined
+
+  if (urlSession) {
+    // URL 中有 session 参数，使用它
+    currentSessionId.value = urlSession
+    saveCurrentSession(urlSession)
+    await loadSessionHistory(urlSession)
+  } else {
+    // URL 中没有 session 参数，尝试从 localStorage 读取
+    const lastSession = getLastSession()
+    if (lastSession) {
+      // 有上次会话，重定向到该会话
+      router.replace({ name: 'chat', query: { session: lastSession } })
+    } else {
+      // 没有上次会话，创建新会话
+      try {
+        const res = await sessionApi.create()
+        saveCurrentSession(res.session_id)
+        router.replace({ name: 'chat', query: { session: res.session_id } })
+      } catch (error) {
+        message.error('创建会话失败')
+      }
+    }
+  }
+  initializing.value = false
+}
+
 // 监听 session 参数变化
 watch(
   () => route.query.session,
-  (newSession) => {
-    currentSessionId.value = (newSession as string) || null
-    messages.value = []
+  async (newSession, oldSession) => {
+    // 跳过初始加载（由 initSession 处理）
+    if (!oldSession && !newSession) return
+
+    const sessionId = (newSession as string) || null
+    currentSessionId.value = sessionId
     inputMessage.value = ''
-  },
-  { immediate: true }
+
+    if (sessionId) {
+      saveCurrentSession(sessionId)
+      await loadSessionHistory(sessionId)
+    } else {
+      messages.value = []
+    }
+  }
 )
+
+// 组件挂载时初始化会话
+onMounted(() => {
+  initSession()
+})
 
 // 滚动到底部
 const scrollToBottom = async () => {
@@ -132,7 +206,7 @@ const sendMessage = async () => {
 const createNewSession = async () => {
   try {
     const res = await sessionApi.create()
-    message.success('新建会话成功')
+    saveCurrentSession(res.session_id)
     router.push({ name: 'chat', query: { session: res.session_id } })
   } catch (error) {
     message.error('新建会话失败')
@@ -185,12 +259,19 @@ const createNewSession = async () => {
         <p class="empty-hint">发送消息开始对话</p>
       </div>
 
-      <!-- 加载指示器 -->
-      <div v-if="loading" class="loading-indicator">
-        <div class="loading-dots">
-          <span></span>
-          <span></span>
-          <span></span>
+      <!-- 加载指示器（助手消息组样式） -->
+      <div v-if="loading" class="message-group assistant loading-group">
+        <div class="group-avatar">
+          <img :src="LobsterIcon" alt="HelloClaw" />
+        </div>
+        <div class="group-content">
+          <div class="message-bubble">
+            <div class="loading-dots">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -419,16 +500,16 @@ const createNewSession = async () => {
   font-size: 14px;
 }
 
-/* 加载指示器 */
-.loading-indicator {
-  display: flex;
-  justify-content: center;
-  padding: 8px;
+/* 加载指示器（在消息气泡内） */
+.loading-group .message-bubble {
+  padding: 12px 16px;
 }
 
 .loading-dots {
   display: flex;
   gap: 4px;
+  align-items: center;
+  justify-content: center;
 }
 
 .loading-dots span {

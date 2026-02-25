@@ -42,3 +42,11 @@ htmlcov/
 # uv
 .uv/
 uv.lock
+
+# HelloAgents 运行时目录（已在 Config 中禁用，但目录仍会被创建）
+backend/memory/
+backend/skills/
+backend/tool-output/
+
+# 临时测试文件
+backend/test_server.py

@@ -20,7 +20,7 @@ class ChatResponse(BaseModel):
 
 def get_agent():
     """获取全局 Agent 实例"""
-    from main import get_agent as _get_agent
+    from ..main import get_agent as _get_agent
     return _get_agent()
 
 
