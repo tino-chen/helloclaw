@@ -1,24 +1,36 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { Card, List, Input, Button, message, Empty, Tag } from 'ant-design-vue'
+import { Card, List, Input, Button, message, Empty, Tag, Modal, Checkbox } from 'ant-design-vue'
 import { configApi, type ConfigFile } from '@/api/config'
-import { SaveOutlined, FileTextOutlined } from '@ant-design/icons-vue'
+import { SaveOutlined, FileTextOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 
 const configs = ref<string[]>([])
 const selectedConfig = ref<ConfigFile | null>(null)
 const editingContent = ref('')
 const loading = ref(false)
 const saving = ref(false)
+const resetting = ref(false)
+const showResetModal = ref(false)
+const resetOptions = ref({
+  reset_sessions: true,
+  reset_memory: true,
+  reset_global_config: false,
+})
 
 const configDescriptions: Record<string, string> = {
-  CONFIG: '全局配置 (LLM、Proxy、Agent)',
-  IDENTITY: 'Agent 身份定义',
+  CONFIG: '全局配置',
+  IDENTITY: '身份定义',
   USER: '用户信息',
   SOUL: '人格模板',
   MEMORY: '长期记忆',
   AGENTS: '工作空间规则',
   HEARTBEAT: '心跳任务',
   BOOTSTRAP: '初始化引导',
+}
+
+// 获取配置文件的后缀
+const getConfigExtension = (name: string): string => {
+  return name === 'CONFIG' ? '.json' : '.md'
 }
 
 const loadConfigs = async () => {
@@ -57,6 +69,38 @@ const saveConfig = async () => {
   }
 }
 
+const confirmReset = () => {
+  // 重置选项为默认值
+  resetOptions.value = {
+    reset_sessions: true,
+    reset_memory: true,
+    reset_global_config: false,
+  }
+  showResetModal.value = true
+}
+
+const handleReset = async () => {
+  resetting.value = true
+  try {
+    const res = await configApi.reset(resetOptions.value)
+    message.success(res.message)
+    showResetModal.value = false
+    selectedConfig.value = null
+    editingContent.value = ''
+
+    // 如果清除了会话历史，也要清除 localStorage 中的上次会话 ID
+    if (resetOptions.value.reset_sessions) {
+      localStorage.removeItem('helloclaw.lastSessionId')
+    }
+
+    await loadConfigs()
+  } catch (error) {
+    message.error('重置失败')
+  } finally {
+    resetting.value = false
+  }
+}
+
 onMounted(() => {
   loadConfigs()
 })
@@ -75,6 +119,15 @@ onMounted(() => {
         <Card :loading="loading" class="list-card">
           <template #title>
             <FileTextOutlined /> 配置文件
+          </template>
+          <template #extra>
+            <button
+              class="reset-btn"
+              @click="confirmReset"
+              title="重置为初始模板"
+            >
+              <ReloadOutlined /> 初始化
+            </button>
           </template>
           <List :data-source="configs" :locale="{ emptyText: '暂无配置文件' }">
             <template #renderItem="{ item }">
@@ -99,7 +152,7 @@ onMounted(() => {
         <Card v-if="selectedConfig" class="editor-card">
           <template #title>
             <span>{{ selectedConfig.name }}</span>
-            <Tag color="green" style="margin-left: 8px">.md</Tag>
+            <Tag color="green" style="margin-left: 8px">{{ getConfigExtension(selectedConfig.name) }}</Tag>
           </template>
           <template #extra>
             <Button
@@ -125,6 +178,46 @@ onMounted(() => {
         </Card>
       </div>
     </div>
+
+    <!-- 重置确认弹窗 -->
+    <Modal
+      v-model:open="showResetModal"
+      title="确认初始化"
+      :confirm-loading="resetting"
+      @ok="handleReset"
+      okText="确认初始化"
+      cancelText="取消"
+      okType="danger"
+    >
+      <div class="reset-warning">
+        <p style="color: #ff4d4f; font-weight: 500;">⚠️ 警告：此操作不可撤销！</p>
+        <p>初始化将把所有配置文件恢复为默认模板，包括：</p>
+        <ul>
+          <li>AGENTS.md - 工作空间规则</li>
+          <li>IDENTITY.md - 身份信息</li>
+          <li>USER.md - 用户信息</li>
+          <li>SOUL.md - 人格模板</li>
+          <li>MEMORY.md - 长期记忆</li>
+          <li>HEARTBEAT.md - 心跳任务</li>
+          <li>BOOTSTRAP.md - 初始化引导</li>
+        </ul>
+
+        <div class="reset-options">
+          <p style="font-weight: 500; margin-bottom: 8px;">额外清除选项：</p>
+          <Checkbox v-model:checked="resetOptions.reset_sessions">
+            清除所有会话历史
+          </Checkbox>
+          <Checkbox v-model:checked="resetOptions.reset_memory">
+            清除每日记忆文件
+          </Checkbox>
+          <Checkbox v-model:checked="resetOptions.reset_global_config">
+            重置全局配置（LLM、Agent 设置等）
+          </Checkbox>
+        </div>
+
+        <p style="margin-top: 16px;">您确定要继续吗？</p>
+      </div>
+    </Modal>
   </div>
 </template>
 
@@ -247,5 +340,48 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* 初始化按钮 - 纯红色背景 + 白色字体（可操作） */
+.reset-btn {
+  padding: 4px 12px;
+  font-size: 13px;
+  border: none;
+  border-radius: 6px;
+  background: #ff4d4f;
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.reset-btn:hover {
+  background: #ff7875;
+}
+
+.reset-warning {
+  padding: 8px 0;
+}
+
+.reset-warning ul {
+  margin: 12px 0;
+  padding-left: 24px;
+}
+
+.reset-warning li {
+  margin: 4px 0;
+  color: #666;
+}
+
+.reset-options {
+  margin-top: 16px;
+  padding: 12px;
+  background: #fafafa;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 </style>
