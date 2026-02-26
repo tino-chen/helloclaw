@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { Card, List, Input, Button, message, Empty, Tag, Modal, Checkbox } from 'ant-design-vue'
 import { configApi, type ConfigFile } from '@/api/config'
 import { SaveOutlined, FileTextOutlined, ReloadOutlined } from '@ant-design/icons-vue'
+
+const router = useRouter()
 
 const configs = ref<string[]>([])
 const selectedConfig = ref<ConfigFile | null>(null)
@@ -94,6 +97,9 @@ const handleReset = async () => {
     }
 
     await loadConfigs()
+
+    // 导航到聊天页面并传递刷新参数，让 ChatView 重新获取 agent 信息
+    router.push({ name: 'chat', query: { refresh: Date.now().toString() } })
   } catch (error) {
     message.error('重置失败')
   } finally {
