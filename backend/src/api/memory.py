@@ -83,6 +83,9 @@ def get_preview(content: str, max_length: int = 100) -> str:
     return '(空)'
 
 
+# ==================== 静态路由（必须在 /{filename} 之前）====================
+
+
 @router.get("/list", response_model=MemoryListResponse)
 async def list_memories(
     category: Optional[str] = Query(None, description="按分类过滤"),
@@ -126,34 +129,6 @@ async def list_memories(
             ))
 
     return MemoryListResponse(memories=memories, total=len(memories))
-
-
-@router.get("/{filename}")
-async def get_memory(filename: str, ws: WorkspaceManager = Depends(get_workspace)):
-    """获取指定日期的记忆内容"""
-    if not filename.endswith('.md'):
-        filename += '.md'
-
-    filepath = os.path.join(ws.memory_path, filename)
-
-    if not os.path.exists(filepath):
-        raise HTTPException(status_code=404, detail=f"记忆文件 {filename} 不存在")
-
-    with open(filepath, 'r', encoding='utf-8') as f:
-        content = f.read()
-
-    return {
-        "filename": filename,
-        "date": filename.replace('.md', ''),
-        "content": content
-    }
-
-
-@router.post("/today")
-async def add_to_today(content: str, ws: WorkspaceManager = Depends(get_workspace)):
-    """添加内容到今日记忆"""
-    ws.append_to_daily_memory(content)
-    return {"status": "ok", "message": "已添加到今日记忆"}
 
 
 @router.get("/stats", response_model=MemoryStatsResponse)
@@ -202,6 +177,13 @@ async def get_memory_stats(ws: WorkspaceManager = Depends(get_workspace)):
     )
 
 
+@router.post("/today")
+async def add_to_today(content: str, ws: WorkspaceManager = Depends(get_workspace)):
+    """添加内容到今日记忆"""
+    ws.append_to_daily_memory(content)
+    return {"status": "ok", "message": "已添加到今日记忆"}
+
+
 @router.post("/capture", response_model=MemoryCaptureResponse)
 async def capture_memory(
     request: MemoryCaptureRequest,
@@ -247,3 +229,27 @@ async def cleanup_memories(
         deleted=deleted,
         message=f"已清理 {len(deleted)} 个过期记忆文件"
     )
+
+
+# ==================== 动态路由（必须放在最后）====================
+
+
+@router.get("/{filename}")
+async def get_memory(filename: str, ws: WorkspaceManager = Depends(get_workspace)):
+    """获取指定日期的记忆内容"""
+    if not filename.endswith('.md'):
+        filename += '.md'
+
+    filepath = os.path.join(ws.memory_path, filename)
+
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail=f"记忆文件 {filename} 不存在")
+
+    with open(filepath, 'r', encoding='utf-8') as f:
+        content = f.read()
+
+    return {
+        "filename": filename,
+        "date": filename.replace('.md', ''),
+        "content": content
+    }
