@@ -1,0 +1,7 @@
+{
+  "llm": {
+    "model_id": "glm-5",
+    "api_key": "",
+    "base_url": "https://open.bigmodel.cn/api/paas/v4/"
+  }
+}

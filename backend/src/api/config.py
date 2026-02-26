@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
 
-from ..workspace.manager import WorkspaceManager
+from ..workspace.manager import WorkspaceManager, get_default_global_config
 
 router = APIRouter(prefix="/config", tags=["config"])
 
@@ -49,24 +49,8 @@ def ensure_config_json_exists():
     config_path = get_config_json_path()
     if not os.path.exists(config_path):
         os.makedirs(os.path.dirname(config_path), exist_ok=True)
-        default_config = {
-            "llm": {
-                "model_id": "glm-4",
-                "api_key": "",
-                "base_url": "",
-            },
-            "proxy": {
-                "enabled": False,
-                "http": "",
-                "https": "",
-            },
-            "agent": {
-                "max_steps": 10,
-                "temperature": 0.7,
-            },
-        }
         with open(config_path, "w", encoding="utf-8") as f:
-            json.dump(default_config, f, indent=2, ensure_ascii=False)
+            json.dump(get_default_global_config(), f, indent=2, ensure_ascii=False)
 
 
 @router.get("/list")
@@ -103,11 +87,24 @@ async def update_config(name: str, request: ConfigUpdateRequest, ws: WorkspaceMa
     # 特殊处理 CONFIG (config.json)
     if name == "CONFIG":
         ensure_config_json_exists()
-        # 验证 JSON 格式
+        # 严格校验 JSON 格式
         try:
-            json.loads(request.content)
-        except json.JSONDecodeError:
-            raise HTTPException(status_code=400, detail="无效的 JSON 格式")
+            config_data = json.loads(request.content)
+        except json.JSONDecodeError as e:
+            raise HTTPException(status_code=400, detail=f"无效的 JSON 格式: {str(e)}")
+
+        # 校验必需字段
+        if not isinstance(config_data, dict):
+            raise HTTPException(status_code=400, detail="配置必须是 JSON 对象")
+
+        if "llm" not in config_data:
+            raise HTTPException(status_code=400, detail="缺少必需字段: llm")
+
+        llm_config = config_data.get("llm", {})
+        required_fields = ["model_id", "api_key", "base_url"]
+        missing_fields = [f for f in required_fields if f not in llm_config]
+        if missing_fields:
+            raise HTTPException(status_code=400, detail=f"llm 配置缺少必需字段: {', '.join(missing_fields)}")
 
         config_path = get_config_json_path()
         with open(config_path, "w", encoding="utf-8") as f:
@@ -171,10 +168,23 @@ async def reset_workspace(
 
 
 @router.get("/agent/info", response_model=AgentInfo)
-async def get_agent_info():
-    """获取助手信息（包括名字）"""
-    agent = get_agent()
-    if not agent:
-        raise HTTPException(status_code=500, detail="Agent not initialized")
+async def get_agent_info(ws: WorkspaceManager = Depends(get_workspace)):
+    """获取助手信息（包括名字）
 
-    return AgentInfo(name=agent.name)
+    每次都重新读取 IDENTITY.md 以获取最新的名字
+    """
+    # 从 IDENTITY.md 读取最新的名字
+    identity = ws.load_config("IDENTITY")
+    name = "HelloClaw"  # 默认名字
+
+    if identity:
+        import re
+        # 匹配格式: - **名称：** xxx 或 - **名称:** xxx
+        match = re.search(r'\*\*名称[：:]\*\*\s*(.+?)(?:\n|$)', identity)
+        if match:
+            name = match.group(1).strip()
+            # 检查是否是占位符
+            if name.startswith('_') or '选一个' in name or '（' in name:
+                name = "HelloClaw"
+
+    return AgentInfo(name=name)

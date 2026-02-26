@@ -4,9 +4,9 @@ import os
 from typing import List
 
 from hello_agents import Config
-from .simple_agent import SimpleAgent
-from .llm import EnhancedLLM  # 使用增强版 LLM（支持流式工具调用）
-from .memory_flush import MemoryFlushManager
+from .enhanced_simple_agent import EnhancedSimpleAgent
+from .enhanced_llm import EnhancedHelloAgentsLLM  # HelloClaw 专用 LLM（支持流式工具调用）
+from ..memory.memory_flush import MemoryFlushManager
 from hello_agents.tools import (
     ToolRegistry,
     ReadTool,
@@ -59,13 +59,16 @@ class HelloClawAgent:
         # 从 IDENTITY.md 读取名称，如果没有则使用默认值
         self.name = name or self._read_identity_name() or "HelloClaw"
 
+        # 保存传入的参数（用于热加载时的优先级判断）
+        self._override_model_id = model_id
+        self._override_api_key = api_key
+        self._override_base_url = base_url
+
         # 构建系统提示词（从 AGENTS.md 读取）
         system_prompt = self._build_system_prompt()
 
-        # 获取 LLM 配置
-        self._model_id = model_id or os.getenv("LLM_MODEL_ID", "glm-4")
-        self._api_key = api_key or os.getenv("LLM_API_KEY")
-        self._base_url = base_url or os.getenv("LLM_BASE_URL")
+        # 初始化 LLM（从 config.json 读取配置）
+        self._init_llm()
 
         # 初始化配置
         self.config = Config(
@@ -81,19 +84,12 @@ class HelloClawAgent:
             devlog_enabled=False,
         )
 
-        # 初始化增强版 LLM（支持流式工具调用）
-        self._llm = EnhancedLLM(
-            model=self._model_id,
-            api_key=self._api_key,
-            base_url=self._base_url,
-        )
-
         # 初始化工具注册表
         self.tool_registry = self._setup_tools()
 
-        # 初始化底层 SimpleAgent
-        self._agent = SimpleAgent(
-            name=name,
+        # 初始化底层 EnhancedSimpleAgent
+        self._agent = EnhancedSimpleAgent(
+            name=self.name,  # 使用已读取的名字
             llm=self._llm,
             tool_registry=self.tool_registry,
             system_prompt=system_prompt,
@@ -130,6 +126,60 @@ class HelloClawAgent:
             if name and not name.startswith('_') and '选一个' not in name and '（' not in name:
                 return name
         return None
+
+    def _init_llm(self):
+        """初始化 LLM（从 config.json 读取配置）
+
+        配置优先级：构造函数参数 > config.json > 环境变量 > 默认值
+        """
+        llm_config = self.workspace.get_llm_config()
+
+        self._model_id = self._override_model_id or llm_config.get("model_id") or "glm-4"
+        self._api_key = self._override_api_key or llm_config.get("api_key")
+        self._base_url = self._override_base_url or llm_config.get("base_url")
+
+        self._llm = EnhancedHelloAgentsLLM(
+            model=self._model_id,
+            api_key=self._api_key,
+            base_url=self._base_url,
+        )
+
+    def _reload_llm_if_changed(self) -> bool:
+        """检查配置变化并重新加载 LLM
+
+        如果 config.json 中的配置发生变化，重新创建 LLM 实例。
+
+        Returns:
+            是否发生了重新加载
+        """
+        llm_config = self.workspace.get_llm_config()
+
+        new_model_id = self._override_model_id or llm_config.get("model_id") or "glm-4"
+        new_api_key = self._override_api_key or llm_config.get("api_key")
+        new_base_url = self._override_base_url or llm_config.get("base_url")
+
+        if (new_model_id != self._model_id or
+            new_api_key != self._api_key or
+            new_base_url != self._base_url):
+
+            print(f"🔄 检测到配置变化，重新加载 LLM: {self._model_id} -> {new_model_id}")
+
+            self._model_id = new_model_id
+            self._api_key = new_api_key
+            self._base_url = new_base_url
+
+            self._llm = EnhancedHelloAgentsLLM(
+                model=self._model_id,
+                api_key=self._api_key,
+                base_url=self._base_url,
+            )
+
+            # 更新 Agent 的 LLM 引用
+            if hasattr(self, '_agent'):
+                self._agent.llm = self._llm
+
+            return True
+        return False
 
     def _build_system_prompt(self) -> str:
         """构建系统提示词
@@ -198,6 +248,9 @@ class HelloClawAgent:
 
     def chat(self, message: str, session_id: str = None) -> str:
         """同步聊天"""
+        # 热加载配置（检测 config.json 变化）
+        self._reload_llm_if_changed()
+
         # 动态更新系统提示词（检查 BOOTSTRAP 状态、读取最新配置）
         self._agent.system_prompt = self._build_system_prompt()
 
@@ -240,9 +293,17 @@ class HelloClawAgent:
             StreamEvent: 流式事件
         """
         import uuid
+        import time
+
+        t0 = time.time()
+        print(f"[⏱️ {t0:.3f}] achat 开始")
+
+        # 热加载配置（检测 config.json 变化）
+        self._reload_llm_if_changed()
 
         # 动态更新系统提示词（检查 BOOTSTRAP 状态、读取最新配置）
         self._agent.system_prompt = self._build_system_prompt()
+        print(f"[⏱️ {time.time():.3f}] 系统提示词构建完成 (+{time.time()-t0:.3f}s)")
 
         # 如果没有 session_id，创建新的
         if not session_id:
@@ -257,12 +318,10 @@ class HelloClawAgent:
             else:
                 self._agent.clear_history()
                 self._memory_flush_manager.reset()
+        print(f"[⏱️ {time.time():.3f}] 会话加载完成 (+{time.time()-t0:.3f}s)")
 
         # 保存 session_id 供后续保存使用
         self._current_session_id = session_id
-
-        # 检查是否需要触发 Memory Flush
-        await self._check_and_run_memory_flush()
 
         # LLM 调用参数（防止重复循环）
         llm_kwargs = {
@@ -270,8 +329,20 @@ class HelloClawAgent:
             "presence_penalty": 0.3,   # 鼓励谈论新话题
         }
 
-        async for event in self._agent.arun_stream(message, **llm_kwargs):
+        t_llm = time.time()
+        print(f"[⏱️ {t_llm:.3f}] 开始调用 LLM ({self._model_id})...")
+        first_chunk = True
+
+        async for event in self._agent.arun_stream_with_tools(message, **llm_kwargs):
+            if first_chunk and event.type.value == "llm_chunk":
+                print(f"[⏱️ {time.time():.3f}] 首个 token 到达 (LLM 延迟: {time.time()-t_llm:.3f}s)")
+                first_chunk = False
             yield event
+
+        print(f"[⏱️ {time.time():.3f}] LLM 调用完成 (总耗时: {time.time()-t0:.3f}s)")
+
+        # 对话结束后检查是否需要触发 Memory Flush（异步执行，不阻塞用户）
+        await self._check_and_run_memory_flush()
 
     async def _check_and_run_memory_flush(self):
         """检查并执行 Memory Flush

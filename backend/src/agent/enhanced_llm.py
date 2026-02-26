@@ -109,7 +109,7 @@ class StreamToolCallResult:
 
 # ==================== 增强版 LLM 类 ====================
 
-class EnhancedLLM(HelloAgentsLLM):
+class EnhancedHelloAgentsLLM(HelloAgentsLLM):
     """
     增强版 HelloAgentsLLM - 添加流式工具调用支持
 

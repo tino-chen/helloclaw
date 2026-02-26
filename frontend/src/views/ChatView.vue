@@ -80,6 +80,62 @@ const messageGroups = computed<MessageGroup[]>(() => {
   return groups
 })
 
+// 是否应该显示加载指示器（底部的独立指示器）
+// 只有当助手消息组完全没有可见内容时才显示
+const shouldShowLoadingIndicator = computed(() => {
+  if (messages.value.length === 0) {
+    return true
+  }
+
+  const lastMsg = messages.value[messages.value.length - 1]
+  if (lastMsg?.role !== 'assistant') {
+    return true
+  }
+
+  // 只有当完全没有可见内容时才显示底部指示器
+  // 如果有工具卡片等可见内容，等待状态会在消息组内部显示
+  return !hasVisibleContent(lastMsg)
+})
+
+// 检查消息组是否有可见内容
+const hasGroupVisibleContent = (group: MessageGroup): boolean => {
+  for (const msg of group.messages) {
+    if (hasVisibleContent(msg)) {
+      return true
+    }
+  }
+  return false
+}
+
+// 检查消息组是否有文本内容
+const hasGroupTextContent = (group: MessageGroup): boolean => {
+  for (const msg of group.messages) {
+    if (hasTextContent(msg)) {
+      return true
+    }
+  }
+  return false
+}
+
+// 检查消息组是否有正在执行或已完成的工具（但还没有文本回复）
+const hasGroupToolWithoutText = (group: MessageGroup): boolean => {
+  if (group.role !== 'assistant') return false
+  let hasTool = false
+  let hasText = false
+  for (const msg of group.messages) {
+    if (!msg.segments) continue
+    for (const segment of msg.segments) {
+      if (segment.type === 'tool' && !getToolConfig(segment.tool).hidden) {
+        hasTool = true
+      }
+      if (segment.type === 'text' && segment.content && segment.content.trim()) {
+        hasText = true
+      }
+    }
+  }
+  return hasTool && !hasText
+}
+
 // 保存当前会话 ID 到 localStorage
 const saveCurrentSession = (sessionId: string) => {
   localStorage.setItem(SESSION_STORAGE_KEY, sessionId)
@@ -515,6 +571,14 @@ const sendMessage = async () => {
           if (event.session_id) {
             currentSessionId.value = event.session_id
           }
+          // 对话结束后重新获取助手名字（可能在对话中更新了 IDENTITY.md）
+          configApi.getAgentInfo().then(agentInfo => {
+            if (agentInfo.name) {
+              assistantName.value = agentInfo.name
+            }
+          }).catch(() => {
+            // 忽略错误，保持当前名字
+          })
         } else if (event.type === 'error') {
           message.error(event.error || '发送消息失败')
         }
@@ -564,6 +628,7 @@ const createNewSession = async () => {
         <div
           v-for="(group, groupIndex) in messageGroups"
           :key="groupIndex"
+          v-show="group.role !== 'assistant' || hasGroupVisibleContent(group)"
           :class="['message-group', group.role]"
         >
           <!-- 头像 -->
@@ -576,16 +641,8 @@ const createNewSession = async () => {
           <div class="group-content">
             <!-- 遍历每条消息 -->
             <template v-for="(msg, msgIndex) in group.messages" :key="msg.id">
-              <!-- 如果消息没有文本内容且没有可见工具且正在加载，显示加载指示器 -->
-              <div v-if="!hasTextContent(msg) && !hasVisibleTools(msg) && loading" class="message-bubble">
-                <div class="loading-dots">
-                  <span></span>
-                  <span></span>
-                  <span></span>
-                </div>
-              </div>
               <!-- 如果有分段，按分段显示 -->
-              <template v-else-if="msg.segments && msg.segments.length > 0">
+              <template v-if="msg.segments && msg.segments.length > 0">
                 <template v-for="segment in msg.segments" :key="segment.id">
                   <!-- 文本段 -->
                   <div v-if="segment.type === 'text' && segment.content" class="message-bubble">
@@ -645,6 +702,15 @@ const createNewSession = async () => {
               </div>
             </template>
 
+            <!-- 消息组内部的等待状态（有工具调用但没有文本回复时） -->
+            <div v-if="loading && hasGroupToolWithoutText(group)" class="message-bubble">
+              <div class="loading-dots">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+            </div>
+
             <!-- 组底部：名称和时间（加载等待时隐藏） -->
             <div v-if="!isGroupWaiting(group)" class="group-footer">
               <span class="group-name">{{ group.role === 'user' ? '你' : assistantName }}</span>
@@ -661,7 +727,7 @@ const createNewSession = async () => {
       </div>
 
       <!-- 加载指示器（助手消息组样式）- 等待响应时显示 -->
-      <div v-if="loading && (messages.length === 0 || messages[messages.length - 1]?.role !== 'assistant')" class="message-group assistant loading-group">
+      <div v-if="loading && shouldShowLoadingIndicator" class="message-group assistant loading-group">
         <div class="group-avatar">
           <img :src="LobsterIcon" alt="HelloClaw" />
         </div>
@@ -916,22 +982,19 @@ const createNewSession = async () => {
   font-size: 14px;
 }
 
-/* 加载指示器（在消息气泡内） */
+/* 加载指示器 */
 .loading-group .message-bubble,
 .message-bubble:has(.loading-dots) {
-  padding: 12px 16px;
-}
-
-/* 加载组：让三个点与头像更近 */
-.message-group.assistant:has(.loading-dots) {
-  gap: 3px !important;
+  padding: 14px 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
 }
 
 .loading-dots {
   display: flex;
   gap: 4px;
   align-items: center;
-  justify-content: center;
 }
 
 .loading-dots span {
