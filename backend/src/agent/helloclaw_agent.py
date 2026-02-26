@@ -83,6 +83,7 @@ class HelloClawAgent:
             skills_enabled=False,
             todowrite_enabled=False,
             devlog_enabled=False,
+            subagent_enabled=True,  # 启用子 Agent 支持
         )
 
         # 初始化工具注册表
