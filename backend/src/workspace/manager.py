@@ -3,9 +3,9 @@
 import json
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Set
 
 
 # 配置文件列表
@@ -600,3 +600,185 @@ class WorkspaceManager:
             with open(filepath, "r", encoding="utf-8") as f:
                 return f.read()
         return None
+
+    # ==================== 记忆分类与去重 ====================
+
+    def append_classified_memory(
+        self,
+        content: str,
+        category: str,
+        date: datetime = None,
+    ):
+        """追加带分类标签的记忆
+
+        Args:
+            content: 记忆内容
+            category: 分类标签（preference/decision/entity/fact）
+            date: 日期，默认为今天
+        """
+        memory_path = self.get_daily_memory_path(date)
+        timestamp = datetime.now().strftime("%H:%M")
+
+        # 确保文件存在且有标题
+        if not os.path.exists(memory_path):
+            date_str = (date or datetime.now()).strftime("%Y-%m-%d")
+            with open(memory_path, "w", encoding="utf-8") as f:
+                f.write(f"# {date_str}\n")
+
+        # 追加带分类标签的记忆
+        with open(memory_path, "a", encoding="utf-8") as f:
+            f.write(f"\n## {timestamp} - 自动捕获\n\n- [{category}] {content}\n")
+
+    def check_duplicate_memory(self, content: str, threshold: float = 0.7) -> bool:
+        """检查记忆是否重复
+
+        通过关键词重叠检测判断是否与已有记忆重复。
+
+        Args:
+            content: 待检查的内容
+            threshold: 相似度阈值，默认 0.7
+
+        Returns:
+            是否重复（True 表示重复，应跳过）
+        """
+        # 提取关键词
+        keywords = self._extract_keywords(content)
+        if not keywords:
+            return False
+
+        # 检查今日记忆
+        today_path = self.get_daily_memory_path()
+        if os.path.exists(today_path):
+            with open(today_path, "r", encoding="utf-8") as f:
+                today_content = f.read()
+            if self._calculate_overlap(keywords, today_content) >= threshold:
+                return True
+
+        # 检查长期记忆
+        longterm_content = self.load_config("MEMORY")
+        if longterm_content:
+            if self._calculate_overlap(keywords, longterm_content) >= threshold:
+                return True
+
+        # 检查最近的每日记忆
+        recent_files = self.get_recent_memory_day(days=2)
+        for filename in recent_files:
+            filepath = os.path.join(self.memory_path, filename)
+            if os.path.exists(filepath):
+                with open(filepath, "r", encoding="utf-8") as f:
+                    file_content = f.read()
+                if self._calculate_overlap(keywords, file_content) >= threshold:
+                    return True
+
+        return False
+
+    def cleanup_old_memories(self, days: int = 30) -> List[str]:
+        """清理过期的每日记忆
+
+        Args:
+            days: 保留天数，超过此天数将被清理
+
+        Returns:
+            被删除的文件名列表
+        """
+        deleted = []
+        cutoff_date = datetime.now() - timedelta(days=days)
+
+        if not os.path.exists(self.memory_path):
+            return deleted
+
+        for filename in os.listdir(self.memory_path):
+            if not filename.endswith(".md"):
+                continue
+
+            # 尝试解析日期
+            try:
+                date_str = filename.replace(".md", "")
+                file_date = datetime.strptime(date_str, "%Y-%m-%d")
+
+                # 检查是否过期
+                if file_date < cutoff_date:
+                    filepath = os.path.join(self.memory_path, filename)
+                    os.remove(filepath)
+                    deleted.append(filename)
+            except ValueError:
+                # 文件名不是日期格式，跳过
+                continue
+
+        return deleted
+
+    def get_recent_memory_day(self, days: int = 2) -> List[str]:
+        """获取最近 N 天的记忆文件名列表
+
+        Args:
+            days: 天数
+
+        Returns:
+            记忆文件名列表（YYYY-MM-DD.md 格式）
+        """
+        files = []
+        for i in range(days):
+            date = datetime.now() - timedelta(days=i)
+            filename = date.strftime("%Y-%m-%d.md")
+            filepath = os.path.join(self.memory_path, filename)
+            if os.path.exists(filepath):
+                files.append(filename)
+        return files
+
+    def _extract_keywords(self, text: str) -> Set[str]:
+        """提取关键词（过滤中文停用词）
+
+        Args:
+            text: 输入文本
+
+        Returns:
+            关键词集合
+        """
+        # 中文停用词表
+        stopwords = {
+            "的", "了", "是", "在", "我", "有", "和", "就", "不", "人",
+            "都", "一", "一个", "上", "也", "很", "到", "说", "要", "去",
+            "你", "会", "着", "没有", "看", "好", "自己", "这", "那",
+            "什么", "这个", "那个", "可以", "就是", "这样", "然后",
+            "还是", "但是", "因为", "所以", "如果", "虽然", "可能",
+            "需要", "应该", "或者", "而且", "已经", "还有", "一直",
+            "的话", "一下", "一些", "一点", "东西", "知道", "觉得",
+            "喜欢", "偏好", "用户", "记住", "记下", "决定", "选定",
+        }
+
+        # 使用正则提取中文词和英文单词
+        # 中文：2 字及以上
+        # 英文：3 字母及以上
+        chinese_words = re.findall(r'[\u4e00-\u9fff]{2,}', text)
+        english_words = re.findall(r'[a-zA-Z]{3,}', text)
+
+        keywords = set()
+
+        # 添加中文词（过滤停用词）
+        for word in chinese_words:
+            if word not in stopwords:
+                keywords.add(word.lower())
+
+        # 添加英文词（转小写）
+        for word in english_words:
+            keywords.add(word.lower())
+
+        return keywords
+
+    def _calculate_overlap(self, keywords: Set[str], text: str) -> float:
+        """计算关键词在文本中的匹配率
+
+        Args:
+            keywords: 关键词集合
+            text: 目标文本
+
+        Returns:
+            匹配率（0.0 - 1.0）
+        """
+        if not keywords:
+            return 0.0
+
+        text_lower = text.lower()
+        matched = sum(1 for kw in keywords if kw in text_lower)
+
+        return matched / len(keywords)
