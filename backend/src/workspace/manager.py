@@ -189,6 +189,198 @@ class WorkspaceManager:
 
         return results
 
+    def search_memory_enhanced(
+        self,
+        keyword: str,
+        include_daily: bool = True,
+        context_lines: int = 3,
+    ) -> list:
+        """增强版记忆搜索，返回带行号的上下文
+
+        Args:
+            keyword: 搜索关键词
+            include_daily: 是否包含每日记忆
+            context_lines: 上下文行数
+
+        Returns:
+            匹配的记忆片段列表，包含行号和上下文
+        """
+        results = []
+
+        # 搜索长期记忆
+        memory_content = self.load_config("MEMORY")
+        if memory_content:
+            matches = self._find_matches_with_context(
+                memory_content, keyword, context_lines
+            )
+            if matches:
+                results.append({
+                    "source": "MEMORY.md",
+                    "matches": matches,
+                })
+
+        # 搜索每日记忆
+        if include_daily:
+            for filename in sorted(os.listdir(self.memory_path)):
+                if filename.endswith(".md"):
+                    filepath = os.path.join(self.memory_path, filename)
+                    with open(filepath, "r", encoding="utf-8") as f:
+                        content = f.read()
+                    matches = self._find_matches_with_context(
+                        content, keyword, context_lines
+                    )
+                    if matches:
+                        results.append({
+                            "source": f"memory/{filename}",
+                            "matches": matches,
+                        })
+
+        return results
+
+    def _find_matches_with_context(
+        self,
+        content: str,
+        keyword: str,
+        context_lines: int = 3,
+    ) -> list:
+        """在内容中查找匹配并返回带行号的上下文
+
+        Args:
+            content: 文件内容
+            keyword: 搜索关键词
+            context_lines: 上下文行数
+
+        Returns:
+            匹配片段列表，每个包含 start_line, end_line, content
+        """
+        lines = content.split("\n")
+        keyword_lower = keyword.lower()
+
+        # 找到所有匹配的行号
+        matched_lines = set()
+        for i, line in enumerate(lines):
+            if keyword_lower in line.lower():
+                # 添加匹配行及其上下文
+                for j in range(
+                    max(0, i - context_lines),
+                    min(len(lines), i + context_lines + 1),
+                ):
+                    matched_lines.add(j)
+
+        if not matched_lines:
+            return []
+
+        # 合并相邻的行范围
+        sorted_lines = sorted(matched_lines)
+        ranges = []
+        start = sorted_lines[0]
+        end = sorted_lines[0]
+
+        for line_num in sorted_lines[1:]:
+            if line_num <= end + 1:
+                end = line_num
+            else:
+                ranges.append((start, end))
+                start = line_num
+                end = line_num
+        ranges.append((start, end))
+
+        # 构建结果
+        results = []
+        for start_line, end_line in ranges:
+            # 行号从 1 开始
+            context = "\n".join(
+                f"{i + 1:4d} | {lines[i]}"
+                for i in range(start_line, end_line + 1)
+            )
+            results.append({
+                "start_line": start_line + 1,
+                "end_line": end_line + 1,
+                "content": context,
+            })
+
+        return results
+
+    def read_memory_lines(
+        self,
+        filename: str,
+        start_line: int = None,
+        end_line: int = None,
+    ) -> Optional[str]:
+        """读取记忆文件的指定行范围
+
+        Args:
+            filename: 文件名（MEMORY.md 或 YYYY-MM-DD.md）
+            start_line: 起始行（从 1 开始），默认为 1
+            end_line: 结束行，默认为文件末尾
+
+        Returns:
+            带行号的内容，如果文件不存在返回 None
+        """
+        # 确定文件路径
+        if filename == "MEMORY.md":
+            filepath = self.get_config_path("MEMORY")
+        else:
+            filepath = os.path.join(self.memory_path, filename)
+
+        if not os.path.exists(filepath):
+            return None
+
+        with open(filepath, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+
+        if not lines:
+            return ""
+
+        # 默认值
+        start = max(1, start_line or 1) - 1  # 转为 0-indexed
+        end = end_line or len(lines)
+
+        # 读取指定范围
+        selected_lines = lines[start:end]
+
+        # 格式化输出（带行号）
+        result_lines = []
+        for i, line in enumerate(selected_lines, start=start + 1):
+            # 移除末尾换行符再添加行号
+            result_lines.append(f"{i:4d} | {line.rstrip()}")
+
+        return "\n".join(result_lines)
+
+    def list_memory_files(self) -> list:
+        """列出所有记忆文件
+
+        Returns:
+            记忆文件信息列表
+        """
+        files = []
+
+        # 长期记忆
+        memory_path = self.get_config_path("MEMORY")
+        if os.path.exists(memory_path):
+            stat = os.stat(memory_path)
+            files.append({
+                "name": "MEMORY.md",
+                "type": "longterm",
+                "size": stat.st_size,
+                "updated_at": stat.st_mtime,
+            })
+
+        # 每日记忆
+        if os.path.exists(self.memory_path):
+            for filename in sorted(os.listdir(self.memory_path), reverse=True):
+                if filename.endswith(".md"):
+                    filepath = os.path.join(self.memory_path, filename)
+                    stat = os.stat(filepath)
+                    files.append({
+                        "name": filename,
+                        "type": "daily",
+                        "size": stat.st_size,
+                        "updated_at": stat.st_mtime,
+                    })
+
+        return files
+
     def _check_and_delete_bootstrap(self):
         """检查身份是否已确定，如果是则删除 BOOTSTRAP.md"""
         bootstrap_path = self.get_config_path("BOOTSTRAP")
@@ -312,3 +504,71 @@ class WorkspaceManager:
 
         with open(config_path, "w", encoding="utf-8") as f:
             json.dump(default_config, f, indent=2, ensure_ascii=False)
+
+    # ==================== 会话总结相关 ====================
+
+    def save_session_summary(self, filename: str, content: str):
+        """保存会话总结到 memory 目录
+
+        Args:
+            filename: 文件名（如 2026-02-26-project-discussion.md）
+            content: 总结内容
+        """
+        filepath = os.path.join(self.memory_path, filename)
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(content)
+
+    def list_session_summaries(self) -> list:
+        """列出所有会话总结
+
+        Returns:
+            会话总结文件列表
+        """
+        summaries = []
+
+        if not os.path.exists(self.memory_path):
+            return summaries
+
+        for filename in sorted(os.listdir(self.memory_path), reverse=True):
+            if filename.endswith(".md") and "-" in filename:
+                # 排除纯日期格式（每日记忆）
+                if re.match(r"\d{4}-\d{2}-\d{2}\.md$", filename):
+                    continue
+
+                # 会话总结格式：YYYY-MM-DD-slug.md
+                filepath = os.path.join(self.memory_path, filename)
+                stat = os.stat(filepath)
+
+                # 尝试提取 slug
+                match = re.match(r"(\d{4}-\d{2}-\d{2})-(.+)\.md$", filename)
+                if match:
+                    date_str = match.group(1)
+                    slug = match.group(2)
+                else:
+                    date_str = ""
+                    slug = filename[:-3]
+
+                summaries.append({
+                    "filename": filename,
+                    "date": date_str,
+                    "slug": slug,
+                    "size": stat.st_size,
+                    "updated_at": stat.st_mtime,
+                })
+
+        return summaries
+
+    def load_session_summary(self, filename: str) -> Optional[str]:
+        """加载会话总结内容
+
+        Args:
+            filename: 文件名
+
+        Returns:
+            总结内容，如果不存在返回 None
+        """
+        filepath = os.path.join(self.memory_path, filename)
+        if os.path.exists(filepath):
+            with open(filepath, "r", encoding="utf-8") as f:
+                return f.read()
+        return None

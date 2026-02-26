@@ -6,6 +6,7 @@ from typing import List
 from hello_agents import Config
 from .simple_agent import SimpleAgent
 from .llm import EnhancedLLM  # 使用增强版 LLM（支持流式工具调用）
+from .memory_flush import MemoryFlushManager
 from hello_agents.tools import (
     ToolRegistry,
     ReadTool,
@@ -56,7 +57,7 @@ class HelloClawAgent:
         self.workspace.ensure_workspace_exists()
 
         # 从 IDENTITY.md 读取名称，如果没有则使用默认值
-        self.name = name or self._read_identity_name() or "Assistant"
+        self.name = name or self._read_identity_name() or "HelloClaw"
 
         # 构建系统提示词（从 AGENTS.md 读取）
         system_prompt = self._build_system_prompt()
@@ -99,6 +100,14 @@ class HelloClawAgent:
             config=self.config,
             enable_tool_calling=True,
             max_tool_iterations=max_tool_iterations,
+        )
+
+        # 初始化 Memory Flush 管理器
+        self._memory_flush_manager = MemoryFlushManager(
+            context_window=self.config.context_window,
+            compression_threshold=self.config.compression_threshold,
+            soft_threshold_tokens=4000,
+            enabled=True,
         )
 
     def _read_identity_name(self) -> str:
@@ -239,15 +248,21 @@ class HelloClawAgent:
         if not session_id:
             session_id = str(uuid.uuid4())[:8]
             self._agent.clear_history()
+            # 重置 Memory Flush 状态（新会话）
+            self._memory_flush_manager.reset()
         else:
             session_file = os.path.join(self.workspace_path, "sessions", f"{session_id}.json")
             if os.path.exists(session_file):
                 self._agent.load_session(session_file)
             else:
                 self._agent.clear_history()
+                self._memory_flush_manager.reset()
 
         # 保存 session_id 供后续保存使用
         self._current_session_id = session_id
+
+        # 检查是否需要触发 Memory Flush
+        await self._check_and_run_memory_flush()
 
         # LLM 调用参数（防止重复循环）
         llm_kwargs = {
@@ -257,6 +272,58 @@ class HelloClawAgent:
 
         async for event in self._agent.arun_stream(message, **llm_kwargs):
             yield event
+
+    async def _check_and_run_memory_flush(self):
+        """检查并执行 Memory Flush
+
+        如果当前 token 数接近压缩阈值，触发一个静默回合提醒 Agent 保存记忆。
+        """
+        # 估算当前 token 数（简单估算：字符数 / 4）
+        estimated_tokens = self._estimate_tokens()
+
+        if self._memory_flush_manager.should_trigger_flush(estimated_tokens):
+            print(f"\n🔄 触发 Memory Flush（估算 token: {estimated_tokens}）")
+
+            # 获取 flush 提示词
+            flush_prompt = self._memory_flush_manager.get_flush_prompt()
+
+            # 执行静默回合
+            try:
+                # 使用同步方法执行（不返回给用户）
+                response = self._agent.run(flush_prompt)
+
+                # 检查是否是静默响应
+                if self._memory_flush_manager.is_silent_response(response):
+                    print("📝 Agent 选择不保存记忆")
+                else:
+                    print(f"📝 Agent 已保存记忆")
+
+            except Exception as e:
+                print(f"⚠️ Memory Flush 失败: {e}")
+
+    def _estimate_tokens(self) -> int:
+        """估算当前上下文的 token 数
+
+        使用简单的字符估算方法。
+        对于中文，大约 1.5 字符/token；对于英文，大约 4 字符/token。
+        这里使用保守估算：字符数 / 3。
+
+        Returns:
+            估算的 token 数
+        """
+        total_chars = 0
+
+        # 系统提示词
+        if self._agent.system_prompt:
+            total_chars += len(self._agent.system_prompt)
+
+        # 历史消息
+        for msg in self._agent._history:
+            if msg.content:
+                total_chars += len(msg.content)
+
+        # 保守估算：字符数 / 3
+        return total_chars // 3
 
     def save_current_session(self):
         """保存当前会话"""
@@ -348,3 +415,10 @@ class HelloClawAgent:
         """
         self._agent.clear_history()
         self._current_session_id = None
+
+        # 重置 MemoryFlushManager 状态
+        if hasattr(self, '_memory_flush_manager'):
+            self._memory_flush_manager.reset()
+
+        # 重新读取 name（因为 IDENTITY.md 可能已被重置）
+        self.name = self._read_identity_name() or "HelloClaw"

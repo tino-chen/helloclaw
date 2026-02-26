@@ -275,6 +275,29 @@ watch(
   }
 )
 
+// 监听 refresh 参数变化（处理从配置页面初始化后跳转的情况）
+watch(
+  () => route.query.refresh,
+  async (newRefresh) => {
+    if (newRefresh) {
+      // 重新获取助手名字
+      try {
+        const agentInfo = await configApi.getAgentInfo()
+        if (agentInfo.name) {
+          assistantName.value = agentInfo.name
+        }
+      } catch (error) {
+        console.warn('获取助手名字失败:', error)
+      }
+
+      // 清除 URL 中的 refresh 参数
+      const currentQuery = { ...route.query }
+      delete currentQuery.refresh
+      router.replace({ query: currentQuery })
+    }
+  }
+)
+
 // 组件挂载时初始化会话
 onMounted(async () => {
   await initSession()
