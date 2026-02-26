@@ -17,7 +17,7 @@ from hello_agents.tools import (
 )
 
 from ..workspace.manager import WorkspaceManager
-from ..tools import MemoryTool
+from ..tools import MemoryTool, ExecuteCommandTool, WebSearchTool, WebFetchTool
 
 
 class HelloClawAgent:
@@ -248,6 +248,11 @@ class HelloClawAgent:
 
         # HelloClaw 自定义工具
         registry.register_tool(MemoryTool(self.workspace))
+        registry.register_tool(ExecuteCommandTool(
+            allowed_directories=[self.workspace_path]  # 限制在工作空间目录
+        ))
+        registry.register_tool(WebSearchTool())  # 网页搜索工具（需要配置 BRAVE_API_KEY）
+        registry.register_tool(WebFetchTool())   # 网页抓取工具
 
         return registry
 

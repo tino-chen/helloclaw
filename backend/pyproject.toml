@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [project.scripts]
-helloclaw = "cli.main:cli"
+helloclaw = "src.cli.main:cli"
 
 [build-system]
 requires = ["hatchling"]
