@@ -28,6 +28,9 @@ export const TOOL_DISPLAY_CONFIG: Record<string, ToolDisplayConfig> = {
   // 任务工具
   Task: { name: '子任务', icon: '📋' },
 
+  // 命令执行工具
+  execute_command: { name: '执行命令', icon: '💻' },
+
   // 网络工具
   web_search: { name: '网络搜索', icon: '🌐' },
   web_fetch: { name: '获取网页', icon: '📡' },
