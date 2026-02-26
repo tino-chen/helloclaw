@@ -65,8 +65,10 @@ const saveConfig = async () => {
   try {
     await configApi.update(selectedConfig.value.name, editingContent.value)
     message.success('保存成功')
-  } catch (error) {
-    message.error('保存失败')
+  } catch (error: any) {
+    // 透传后端错误信息
+    const errorMsg = error?.response?.data?.detail || error?.message || '保存失败'
+    message.error(errorMsg)
   } finally {
     saving.value = false
   }

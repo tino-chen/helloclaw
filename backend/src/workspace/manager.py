@@ -1,5 +1,6 @@
 """工作空间管理器"""
 
+import json
 import os
 import re
 from datetime import datetime
@@ -22,6 +23,15 @@ CONFIG_FILES = [
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
 
+def get_default_global_config() -> dict:
+    """获取默认全局配置（从模板文件读取）"""
+    template_path = TEMPLATES_DIR / "config.json"
+    if template_path.exists():
+        with open(template_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {"llm": {"model_id": "glm-5", "base_url": "", "api_key": ""}}
+
+
 class WorkspaceManager:
     """工作空间管理器
 
@@ -40,6 +50,42 @@ class WorkspaceManager:
         self.workspace_path = os.path.expanduser(workspace_path)
         self.memory_path = os.path.join(self.workspace_path, "memory")
         self.sessions_path = os.path.join(self.workspace_path, "sessions")
+
+    # ==================== 全局配置读取 ====================
+
+    def load_global_config(self) -> dict:
+        """加载全局 config.json
+
+        Returns:
+            配置字典，如果文件不存在返回空字典
+        """
+        config_path = os.path.expanduser("~/.helloclaw/config.json")
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, IOError):
+                return {}
+        return {}
+
+    def get_llm_config(self) -> dict:
+        """获取 LLM 配置
+
+        优先级：config.json 非空值 > 环境变量 > 默认值
+
+        Returns:
+            包含 model_id, api_key, base_url 的字典
+        """
+        global_config = self.load_global_config()
+        llm_config = global_config.get("llm", {})
+
+        return {
+            "model_id": llm_config.get("model_id") or os.getenv("LLM_MODEL_ID") or "glm-4",
+            "api_key": llm_config.get("api_key") or os.getenv("LLM_API_KEY"),
+            "base_url": llm_config.get("base_url") or os.getenv("LLM_BASE_URL"),
+        }
+
+    # ==================== 入职状态检测 ====================
 
     def is_onboarding_completed(self) -> bool:
         """检查入职是否完成
@@ -481,29 +527,11 @@ class WorkspaceManager:
 
     def _reset_global_config(self):
         """重置全局配置文件"""
-        import json
         config_path = os.path.expanduser("~/.helloclaw/config.json")
         os.makedirs(os.path.dirname(config_path), exist_ok=True)
 
-        default_config = {
-            "llm": {
-                "model_id": "glm-4",
-                "api_key": "",
-                "base_url": "",
-            },
-            "proxy": {
-                "enabled": False,
-                "http": "",
-                "https": "",
-            },
-            "agent": {
-                "max_steps": 10,
-                "temperature": 0.7,
-            },
-        }
-
         with open(config_path, "w", encoding="utf-8") as f:
-            json.dump(default_config, f, indent=2, ensure_ascii=False)
+            json.dump(get_default_global_config(), f, indent=2, ensure_ascii=False)
 
     # ==================== 会话总结相关 ====================
 
