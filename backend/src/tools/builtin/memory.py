@@ -153,14 +153,21 @@ class MemoryTool(Tool):
         return f"**{display_name}**:\n```\n{content}\n```"
 
     @tool_action("memory_add", "添加内容到今日记忆")
-    def _add_daily(self, content: str) -> str:
+    def _add_daily(self, content: str, category: str = None) -> str:
         """添加每日记忆
 
         Args:
             content: 记忆内容
+            category: 分类标签（preference/decision/entity/fact），可选
         """
-        self.workspace.append_to_daily_memory(content)
-        return f"已添加到今日记忆: {content[:50]}..."
+        if category:
+            # 使用带分类标签的存储
+            self.workspace.append_classified_memory(content, category)
+            return f"已添加到今日记忆 [{category}]: {content[:50]}..."
+        else:
+            # 使用原有方法
+            self.workspace.append_to_daily_memory(content)
+            return f"已添加到今日记忆: {content[:50]}..."
 
     @tool_action("memory_update_longterm", "更新长期记忆")
     def _update_longterm(self, content: str) -> str:
@@ -201,6 +208,20 @@ class MemoryTool(Tool):
                 lines.append(f"- **{f['name']}** ({size_kb:.1f} KB)")
 
         return "\n".join(lines)
+
+    @tool_action("memory_cleanup", "清理过期的每日记忆")
+    def _cleanup(self, days: int = 30) -> str:
+        """清理过期记忆
+
+        Args:
+            days: 保留天数，超过此天数将被清理，默认 30 天
+        """
+        deleted = self.workspace.cleanup_old_memories(days)
+
+        if not deleted:
+            return f"没有需要清理的记忆（保留最近 {days} 天）"
+
+        return f"已清理 {len(deleted)} 个过期记忆文件:\n" + "\n".join(f"- {f}" for f in deleted)
 
     def _list_memory_files_brief(self) -> str:
         """简要列出记忆文件"""
