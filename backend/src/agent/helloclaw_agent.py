@@ -7,6 +7,7 @@ from hello_agents import Config
 from .enhanced_simple_agent import EnhancedSimpleAgent
 from .enhanced_llm import EnhancedHelloAgentsLLM  # HelloClaw 专用 LLM（支持流式工具调用）
 from ..memory.memory_flush import MemoryFlushManager
+from ..memory.capture import MemoryCaptureManager
 from hello_agents.tools import (
     ToolRegistry,
     ReadTool,
@@ -105,6 +106,9 @@ class HelloClawAgent:
             soft_threshold_tokens=4000,
             enabled=True,
         )
+
+        # 初始化 Memory Capture 管理器
+        self._memory_capture_manager = MemoryCaptureManager(self.workspace)
 
     def _read_identity_name(self) -> str:
         """从 IDENTITY.md 读取助手名称
@@ -341,8 +345,28 @@ class HelloClawAgent:
 
         print(f"[⏱️ {time.time():.3f}] LLM 调用完成 (总耗时: {time.time()-t0:.3f}s)")
 
+        # 对话结束后自动捕获记忆（异步执行，不阻塞用户）
+        await self._capture_memories(message)
+
         # 对话结束后检查是否需要触发 Memory Flush（异步执行，不阻塞用户）
         await self._check_and_run_memory_flush()
+
+    async def _capture_memories(self, user_message: str):
+        """自动捕获对话中的记忆
+
+        Args:
+            user_message: 用户消息
+        """
+        try:
+            # 使用 MemoryCaptureManager 分析并存储记忆
+            memories = await self._memory_capture_manager.acapture_and_store(user_message)
+
+            if memories:
+                print(f"📝 自动捕获 {len(memories)} 条记忆")
+                for m in memories:
+                    print(f"   - [{m['category']}] {m['content'][:50]}...")
+        except Exception as e:
+            print(f"⚠️ 记忆捕获失败: {e}")
 
     async def _check_and_run_memory_flush(self):
         """检查并执行 Memory Flush
