@@ -22,18 +22,26 @@ export const TOOL_DISPLAY_CONFIG: Record<string, ToolDisplayConfig> = {
   // 记忆工具（HelloClaw 自定义）
   memory: { name: '记忆操作', icon: '🧠' },
   memory_search: { name: '搜索记忆', icon: '🔍' },
+  memory_get: { name: '读取记忆', icon: '📖' },
   memory_add: { name: '添加记忆', icon: '📝' },
   memory_update_longterm: { name: '更新长期记忆', icon: '📚' },
+  memory_list: { name: '列出记忆文件', icon: '📋' },
+  memory_cleanup: { name: '清理过期记忆', icon: '🧹' },
 
   // 任务工具
   Task: { name: '子任务', icon: '📋' },
 
   // 命令执行工具
   execute_command: { name: '执行命令', icon: '💻' },
+  exec_run: { name: '执行命令', icon: '💻' },
+  exec_allowed_commands: { name: '查看允许的命令', icon: '📋' },
+  exec_dangerous_patterns: { name: '查看危险命令', icon: '⚠️' },
 
   // 网络工具
   web_search: { name: '网络搜索', icon: '🌐' },
+  search_web: { name: '网络搜索', icon: '🌐' },
   web_fetch: { name: '获取网页', icon: '📡' },
+  fetch_url: { name: '获取网页', icon: '📡' },
 }
 
 // 默认配置（未知工具）
