@@ -2,7 +2,7 @@
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { Menu, ConfigProvider, theme } from 'ant-design-vue'
 import { MessageOutlined, SettingOutlined, HistoryOutlined, BookOutlined } from '@ant-design/icons-vue'
-import TinoAvatar from '@/assets/tino.png'
+import LobsterIcon from '@/assets/lobster.svg'
 
 const route = useRoute()
 
@@ -23,7 +23,7 @@ const customTheme = {
     <div class="app-container">
       <aside class="sidebar">
         <div class="logo">
-          <img :src="TinoAvatar" alt="HelloClaw" class="logo-icon" />
+          <img :src="LobsterIcon" alt="HelloClaw" class="logo-icon" />
           <span class="logo-text">HelloClaw</span>
         </div>
         <Menu

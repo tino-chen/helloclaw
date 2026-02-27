@@ -8,7 +8,7 @@ import { chatApi } from '@/api/chat'
 import { configApi } from '@/api/config'
 import { renderMarkdown, formatTime } from '@/utils/markdown'
 import { getToolConfig, formatToolArgs, formatToolResult } from '@/utils/toolDisplay'
-import TinoAvatar from '@/assets/tino.png'
+import LobsterIcon from '@/assets/lobster.svg'
 
 // localStorage key for saving current session
 const SESSION_STORAGE_KEY = 'helloclaw.lastSessionId'
@@ -621,7 +621,7 @@ const createNewSession = async () => {
     <div class="chat-messages" ref="messagesContainer">
       <!-- 初始化加载状态 -->
       <div v-if="initializing" class="empty-state">
-        <img :src="TinoAvatar" alt="HelloClaw" class="empty-icon loading" />
+        <img :src="LobsterIcon" alt="HelloClaw" class="empty-icon loading" />
         <p class="empty-hint">加载中...</p>
       </div>
       <template v-else-if="messages.length > 0">
@@ -633,7 +633,7 @@ const createNewSession = async () => {
         >
           <!-- 头像 -->
           <div class="group-avatar">
-            <img v-if="group.role === 'assistant'" :src="TinoAvatar" alt="HelloClaw" />
+            <img v-if="group.role === 'assistant'" :src="LobsterIcon" alt="HelloClaw" />
             <div v-else class="user-avatar">你</div>
           </div>
 
@@ -722,14 +722,14 @@ const createNewSession = async () => {
 
       <!-- 空状态 -->
       <div v-else class="empty-state">
-        <img :src="TinoAvatar" alt="HelloClaw" class="empty-icon" />
+        <img :src="LobsterIcon" alt="HelloClaw" class="empty-icon" />
         <p class="empty-hint">发送消息开始对话</p>
       </div>
 
       <!-- 加载指示器（助手消息组样式）- 等待响应时显示 -->
       <div v-if="loading && shouldShowLoadingIndicator" class="message-group assistant loading-group">
         <div class="group-avatar">
-          <img :src="TinoAvatar" alt="HelloClaw" />
+          <img :src="LobsterIcon" alt="HelloClaw" />
         </div>
         <div class="group-content">
           <div class="message-bubble">

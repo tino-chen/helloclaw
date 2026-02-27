@@ -4,7 +4,7 @@ import { Tag } from 'ant-design-vue'
 import { LoadingOutlined } from '@ant-design/icons-vue'
 import { renderMarkdown, formatTime } from '@/utils/markdown'
 import { getToolConfig, formatToolArgs, formatToolResult } from '@/utils/toolDisplay'
-import TinoAvatar from '@/assets/tino.png'
+import LobsterIcon from '@/assets/lobster.svg'
 
 // 消息段类型
 interface TextSegment {
@@ -81,7 +81,7 @@ const hasVisibleContent = computed(() => {
   <div v-if="hasVisibleContent" :class="['chat-message', message.role]">
     <!-- 头像 -->
     <div class="message-avatar">
-      <img v-if="message.role === 'assistant'" :src="TinoAvatar" alt="HelloClaw" />
+      <img v-if="message.role === 'assistant'" :src="LobsterIcon" alt="HelloClaw" />
       <div v-else class="user-avatar">你</div>
     </div>
 
