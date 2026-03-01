@@ -13,6 +13,7 @@ dependencies = [
     "sse-starlette>=2.0.0",
     "click>=8.0.0",
     "rich>=13.0.0",
+    "httpx[socks]>=0.28.1",
 ]
 
 [project.scripts]

@@ -18,7 +18,7 @@ curl -s -X POST http://localhost:8000/api/memory/capture \
 ```bash
 curl -s -X POST http://localhost:8000/api/memory/capture \
   -H "Content-Type: application/json" \
-  -d '{"content": "决定使用 GLM-5 作为默认模型", "category": "decision"}' | jq
+  -d '{"content": "决定使用 glm-4.7-flash 作为默认模型", "category": "decision"}' | jq
 ```
 
 ### 4. 添加实体类记忆

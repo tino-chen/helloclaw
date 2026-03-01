@@ -22,10 +22,10 @@ curl -s -X POST $BASE_URL/capture \
 
 # ==================== 测试 3: 添加决策类记忆 ====================
 echo -e "\n🎯 测试 3: 添加决策类记忆 (decision)"
-echo '命令: curl -s -X POST $BASE_URL/capture -H "Content-Type: application/json" -d '\''{"content": "决定使用 GLM-5 作为默认模型", "category": "decision"}'\'''
+echo '命令: curl -s -X POST $BASE_URL/capture -H "Content-Type: application/json" -d '\''{"content": "决定使用 glm-4.7-flash 作为默认模型", "category": "decision"}'\'''
 curl -s -X POST $BASE_URL/capture \
   -H "Content-Type: application/json" \
-  -d '{"content": "决定使用 GLM-5 作为默认模型", "category": "decision"}' | jq
+  -d '{"content": "决定使用 glm-4.7-flash 作为默认模型", "category": "decision"}' | jq
 
 # ==================== 测试 4: 添加实体类记忆 ====================
 echo -e "\n👤 测试 4: 添加实体类记忆 (entity)"

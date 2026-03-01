@@ -29,7 +29,7 @@ def get_default_global_config() -> dict:
     if template_path.exists():
         with open(template_path, "r", encoding="utf-8") as f:
             return json.load(f)
-    return {"llm": {"model_id": "glm-5", "base_url": "", "api_key": ""}}
+    return {"llm": {"model_id": "", "base_url": "", "api_key": ""}}
 
 
 class WorkspaceManager:
