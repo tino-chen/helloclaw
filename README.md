@@ -94,7 +94,7 @@ LLM_BASE_URL=https://open.bigmodel.cn/api/paas/v4/
 
 # 服务配置
 PORT=8000
-CORS_ORIGINS=http://localhost:5173,http://localhost:5174,http://localhost:5175
+CORS_ORIGINS=http://localhost:5173
 
 # 工作空间配置
 WORKSPACE_PATH=~/.helloclaw/workspace
