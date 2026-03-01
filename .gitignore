@@ -46,6 +46,3 @@ htmlcov/
 backend/memory/
 backend/skills/
 backend/tool-output/
-
-# 临时测试文件
-backend/test_server.py

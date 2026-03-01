@@ -1,6 +1,8 @@
 # HelloClaw
 
-**HelloClaw** 是一个基于 Hello-Agents 框架的 AI Agent 应用，实现 OpenClaw 核心功能。
+**HelloClaw** 是一个基于 Hello-Agents 框架的个性化 AI Agent 应用，实现了 OpenClaw 中的核心功能。
+
+![](helloclaw.png)
 
 ## 功能特性
 
